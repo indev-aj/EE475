@@ -7,7 +7,8 @@ m_device = None
 m_dataStream = None
 m_node_map_remote_device = None
  
- 
+# token = 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 
+
 def open_camera():
   global m_device, m_node_map_remote_device
   try:
