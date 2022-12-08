@@ -1,14 +1,24 @@
+import numpy
+
 from ids_peak import ids_peak as peak
 from ids_peak_ipl import ids_peak_ipl
 
+from imswitch.imcommon.model import initLogger
 
-class IDSCamera:
+
+class IDSCam:
     def __init__(self):
-        super().__init()
-        self.camera = open_camera()
-        
+        super().__init__()
+        self.__logger = initLogger(self, tryInheritParent=True)
+
+        self.model = "IDSCamera"
+
+        # camera parameters
+        self.exposure_time = 0
+
     def open_camera():
         global m_device, m_node_map_remote_device
+
         try:
             # Create instance of the device manager
             device_manager = peak.DeviceManager.Instance()
@@ -31,24 +41,7 @@ class IDSCamera:
                     m_node_map_remote_device = m_device.RemoteDevice().NodeMaps()[
                         0]
 
-                return True
-        except Exception as e:
-            # ...
-            str_error = str(e)
-
-        return False
-
-    def prepare_acquisition():
-        global m_dataStream
-        try:
-            data_streams = m_device.DataStreams()
-            if data_streams.empty():
-                # no data streams available
-                return False
-
-            m_dataStream = m_device.DataStreams()[0].OpenDataStream()
-
-            return True
+                    return True
         except Exception as e:
             # ...
             str_error = str(e)
@@ -84,15 +77,32 @@ class IDSCamera:
                 m_node_map_remote_device.FindNode("OffsetY").SetValue(y)
                 m_node_map_remote_device.FindNode("Width").SetValue(width)
                 m_node_map_remote_device.FindNode("Height").SetValue(height)
-        
+
                 return True
         except Exception as e:
             # ...
             str_error = str(e)
             print(str_error)
-        
+
         return False
-    
+
+    def prepare_acquisition():
+        global m_dataStream
+        try:
+            data_streams = m_device.DataStreams()
+            if data_streams.empty():
+                # no data streams available
+                return False
+
+            m_dataStream = m_device.DataStreams()[0].OpenDataStream()
+
+            return True
+        except Exception as e:
+            # ...
+            str_error = str(e)
+
+        return False
+
     def alloc_and_announce_buffers():
         try:
             if m_dataStream:
@@ -103,7 +113,8 @@ class IDSCamera:
                 for buffer in m_dataStream.AnnouncedBuffers():
                     m_dataStream.RevokeBuffer(buffer)
 
-                payload_size = m_node_map_remote_device.FindNode("PayloadSize").Value()
+                payload_size = m_node_map_remote_device.FindNode(
+                    "PayloadSize").Value()
 
                 # Get number of minimum required buffers
                 num_buffers_min_required = m_dataStream.NumBuffersAnnouncedMinRequired()
@@ -117,12 +128,13 @@ class IDSCamera:
         except Exception as e:
             # ...
             str_error = str(e)
-        
+
         return False
-    
+
     def start_acquisition():
         try:
-            m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
+            m_dataStream.StartAcquisition(
+                peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
             m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
             m_node_map_remote_device.FindNode("AcquisitionStart").Execute()
 
@@ -131,7 +143,27 @@ class IDSCamera:
             # ...
             str_error = str(e)
             print(str_error)
-        
+
         return False
- 
- 
+
+    def stop_acquisition(self):
+        pass  # TODO: self.camera.stop_live()
+
+    def close(self):
+        pass  # TODO: self.camera.close()
+
+    def start_live():
+        try:
+            buffer = m_dataStream.WaitForFinishedBuffer(1000)
+            img = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
+            buffer.PixelFormat(), buffer.BasePtr(), buffer.Size(), buffer.Width(), buffer.Height()
+            )
+
+            img = img.ConvertTo(ids_peak_ipl.PixelFormatName_BGRa8, ids_peak_ipl.ConversionMode_Fast)
+            m_dataStream.QueueBuffer(buffer)
+
+            np_img = numpy.array(img)
+            return np_img
+
+        except Exception as e:
+            print("Error " + str(e))
