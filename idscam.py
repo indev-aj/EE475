@@ -15,6 +15,7 @@ class IDSCam:
         peak.Library.Initialize()
 
         self.model = "IDSCamera"
+        self.camera = None
 
         # camera parameters
         self.exposure_time = 0
@@ -63,6 +64,8 @@ class IDSCam:
                     # Get NodeMap of the RemoteDevice for all accesses to the GenICam NodeMap tree
                     m_node_map_remote_device = m_device.RemoteDevice().NodeMaps()[
                         0]
+
+                    self.camera = m_node_map_remote_device
 
                     return True
         except Exception as e:
@@ -185,3 +188,54 @@ class IDSCam:
 
         except Exception as e:
             self.__logger.error(e)
+
+    def setPropertyValue(self, property_name, property_value):
+        # Check if the property exists.
+        if property_name == "gain":
+            self.set_analog_gain(property_value)
+        elif property_name == "exposure":
+            self.set_exposure_time(property_value)
+        else:
+            self.__logger.warning(f'Property {property_name} does not exist')
+            return False
+        return property_value
+
+    def getPropertyValue(self, property_name):
+        # Check if the property exists.
+        if property_name == "gain":
+            property_value = self.camera.gain
+        elif property_name == "exposure":
+            property_value = self.camera.gain
+        elif property_name == "image_width":
+            property_value = self.camera.FindNode("Width").Value()
+        elif property_name == "image_height":
+            property_value = self.camera.FindNode("Height").Value()
+        else:
+            self.__logger.warning(f'Property {property_name} does not exist')
+            return False
+        return property_value
+
+    def set_analog_gain(self, value):
+        try:
+            min = m_node_map_remote_device.FindNode("Gain").Minimum()
+            m_node_map_remote_device.FindNode("Gain").SetValue(min)
+        except Exception as e:
+            print(str(e))
+
+    def set_exposure_time(self, value):
+        try:
+            min = m_node_map_remote_device.FindNode("ExposureTime").Minimum()
+            m_node_map_remote_device.FindNode("ExposureTime").SetValue(min)
+        except Exception as e:
+            print(str(e))
+
+    
+
+    def openPropertiesGUI(self):
+        pass
+
+    def crop():
+        pass
+
+    def flushBuffers():
+        pass
