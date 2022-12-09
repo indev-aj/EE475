@@ -11,12 +11,35 @@ class IDSCam:
         super().__init__()
         self.__logger = initLogger(self, tryInheritParent=True)
 
+        # Initialize library
+        peak.Library.Initialize()
+
         self.model = "IDSCamera"
 
         # camera parameters
         self.exposure_time = 0
 
-    def open_camera():
+        if not self.open_camera():
+            # error
+            self.__logger.error("Camera Error")
+    
+        if not self.prepare_acquisition():
+            # error
+            self.__logger.error("Prepare Error")
+        
+        if not self.set_roi(16, 16, 256, 256):
+            # error
+            self.__logger.error("ROI Error")
+        
+        if not self.alloc_and_announce_buffers():
+            # error
+            self.__logger.error("Alloc Error")
+        
+        if not self.start_acquisition():
+            # error
+            self.__logger.error("Start Acquisition Error")
+
+    def open_camera(self):
         global m_device, m_node_map_remote_device
 
         try:
@@ -43,12 +66,11 @@ class IDSCam:
 
                     return True
         except Exception as e:
-            # ...
-            str_error = str(e)
+            self.__logger.error(e)
 
         return False
 
-    def set_roi(x, y, width, height):
+    def set_roi(self, x, y, width, height):
         try:
             # Get the minimum ROI and set it. After that there are no size restrictions anymore
             x_min = m_node_map_remote_device.FindNode("OffsetX").Minimum()
@@ -81,12 +103,11 @@ class IDSCam:
                 return True
         except Exception as e:
             # ...
-            str_error = str(e)
-            print(str_error)
+            self.__logger.error(e)
 
         return False
 
-    def prepare_acquisition():
+    def prepare_acquisition(self):
         global m_dataStream
         try:
             data_streams = m_device.DataStreams()
@@ -98,12 +119,11 @@ class IDSCam:
 
             return True
         except Exception as e:
-            # ...
-            str_error = str(e)
+            self.__logger.error(e)
 
         return False
 
-    def alloc_and_announce_buffers():
+    def alloc_and_announce_buffers(self):
         try:
             if m_dataStream:
                 # Flush queue and prepare all buffers for revoking
@@ -126,12 +146,11 @@ class IDSCam:
 
                 return True
         except Exception as e:
-            # ...
-            str_error = str(e)
+            self.__logger.error(e)
 
         return False
 
-    def start_acquisition():
+    def start_acquisition(self):
         try:
             m_dataStream.StartAcquisition(
                 peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
@@ -141,8 +160,7 @@ class IDSCam:
             return True
         except Exception as e:
             # ...
-            str_error = str(e)
-            print(str_error)
+            self.__logger.error(e)
 
         return False
 
@@ -152,9 +170,9 @@ class IDSCam:
     def close(self):
         pass  # TODO: self.camera.close()
 
-    def start_live():
+    def start_live(self):
         try:
-            buffer = m_dataStream.WaitForFinishedBuffer(1000)
+            buffer = m_dataStream.WaitForFinishedBuffer(5000)
             img = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
             buffer.PixelFormat(), buffer.BasePtr(), buffer.Size(), buffer.Width(), buffer.Height()
             )
@@ -166,4 +184,4 @@ class IDSCam:
             return np_img
 
         except Exception as e:
-            print("Error " + str(e))
+            self.__logger.error(e)
