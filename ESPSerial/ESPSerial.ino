@@ -15,6 +15,9 @@
 int r = 2;
 int b = 4;
 
+int stageDir = 18;
+int stageMove = 19;
+
 const byte numChars = 32;
 char receivedChars[numChars];
 
@@ -28,6 +31,9 @@ void setup() {
   Serial.begin(115200);
   pinMode(r, OUTPUT);
   pinMode(b, OUTPUT);
+
+  pinMode(stageDir, OUTPUT);
+  pinMode(stageMove, OUTPUT);
 }
 
 void loop() {
@@ -68,22 +74,85 @@ void recvWithStartEndMarkers() {
   }
 }
 
+int steps;
+char nums[4];
 void showNewData() {
+
+  char prefix[2];
+
   if (newData == true) {
     Serial.print("This just in ... ");
     Serial.println(receivedChars);
     newData = false;
 
-    if(strcmp(receivedChars,"L1ON") == 0) {
+    // Laser controls
+    if (strcmp(receivedChars, "L1ON") == 0) {
       digitalWrite(r, HIGH);
-    } else if (strcmp(receivedChars,"L1OF") == 0) {
+    } else if (strcmp(receivedChars, "L1OF") == 0) {
       digitalWrite(r, LOW);
     }
 
-    if(strcmp(receivedChars,"L2ON") == 0) {
+    if (strcmp(receivedChars, "L2ON") == 0) {
       digitalWrite(b, HIGH);
-    } else if (strcmp(receivedChars,"L2OF") == 0) {
+    } else if (strcmp(receivedChars, "L2OF") == 0) {
       digitalWrite(b, LOW);
     }
+
+    // Stage controls
+    /* Steps:
+        1. Check which stage to command
+        2. Check which direction
+        3. Get steps amount
+
+        eg. S1P1000 - Stage 1, positive direction, 1000 steps
+        eg. S2N1000 - Stage 2, negative direction, 1000 steps
+    */
+
+    memcpy(prefix, receivedChars, 2);
+    char dir = receivedChars[2];
+
+    Serial.println(prefix);
+    Serial.println(dir);
+
+    if (strcmp(prefix, "S1") == 0) {
+      switch (dir) {
+        case 'P':
+          steps = getStep();
+          Serial.print("Moving Positive: ");
+          Serial.print(steps);
+          
+          digitalWrite(stageDir, HIGH);
+          for(int i=0;i<steps;i++) {
+            digitalWrite(stageMove, HIGH);
+            delay(500);
+            digitalWrite(stageMove, LOW);
+            delay(500);
+          }
+          break;
+        case 'N':
+          steps = getStep();
+          Serial.print("Moving Negative: ");
+          Serial.print(steps);
+
+          digitalWrite(stageDir, LOW);
+          for(int i=0;i<steps;i++) {
+            digitalWrite(stageMove, HIGH);
+            delay(500);
+            digitalWrite(stageMove, LOW);
+            delay(500);
+          }
+          break;
+        default:
+          Serial.println("Nothing goes here!");
+      }
+    }
   }
+}
+
+int getStep() {
+  for (int i = 0; i <= 4; i++) {
+    nums[i] = receivedChars[i + 1];
+  }
+
+  return atoi(nums);
 }
