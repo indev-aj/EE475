@@ -4,7 +4,7 @@ from imswitch.imcommon.model import initLogger
 from .DetectorManager import DetectorManager, DetectorAction, DetectorNumberParameter, DetectorListParameter
 
 
-class JetsonCamManager(DetectorManager):
+class IDSManager(DetectorManager):
     """ DetectorManager that deals with TheImagingSource cameras and the
     parameters for frame extraction from them.
 
@@ -19,7 +19,7 @@ class JetsonCamManager(DetectorManager):
     def __init__(self, detectorInfo, name, **_lowLevelManagers):
         self.__logger = initLogger(self, instanceName=name)
 
-        self._camera = self._getJetsonObj()
+        self._camera = self._getIDSObj()
 
         model = self._camera.model
         self._running = False
@@ -152,14 +152,14 @@ class JetsonCamManager(DetectorManager):
     def openPropertiesDialog(self):
         self._camera.openPropertiesGUI()
 
-    def _getJetsonObj(self):
+    def _getIDSObj(self):
         try:
             from imswitch.imcontrol.model.interfaces.idscamera import IDSCamera
-            self.__logger.debug(f'Trying to initialize Jetson IMX219 camera')
+            self.__logger.debug(f'Trying to initialize IDS camera')
             camera = IDSCamera()
         except Exception as e:
             self.__logger.error(e)
-            self.__logger.warning(f'Failed to initialize Jetson IDS Camera, loading TIS mocker')
+            self.__logger.warning(f'Failed to initialize IDS Camera, loading TIS mocker')
             from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
             camera = MockCameraTIS()
 

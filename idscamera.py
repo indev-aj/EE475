@@ -14,17 +14,26 @@ class IDSCamera:
         super().__init__()
         self.__logger = initLogger(self, tryInheritParent=False)
 
-        
+        peak.Library.Initialize()
         self.model = "IDS Camera"
         
-        # TODO get camera parameters
-        # TODO convert global variable to 'self'
-        
+        # camera parameters
+        self.blacklevel = 15
+        self.exposure_time = 30
+        self.analog_gain = 1
+        self.pixel_format = "Mono12"
 
-        self.m_device = None
-        self.m_dataStream = None
-        self.m_node_map_remote_device = None
-        self.camera = self.openCamera()
+        self.frame_id_last = 0
+
+        self.PreviewWidthRatio = 4
+        self.PreviewHeightRatio = 4
+        
+        self.SensorWidth = 1920
+        self.SensorHeight = 1200
+        self.shape = (self.SensorWidth,self.SensorHeight)
+        
+        self.is_running = False
+        self.openCamera()
 
 
     def start_live(self):
@@ -32,35 +41,44 @@ class IDSCamera:
             self.m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
             self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
             self.m_node_map_remote_device.FindNode("AcquisitionStart").Execute()
-            
-            return True
-        except Exception as e:
+
+            self.is_running = True
+        except peak.Exception as e:
+            self.__logger.debug("Start Live was a problem!")
             self.__logger.error(e)
-        
-        return False
         
          
     def stop_live(self):
-        self.camera.release()
+        if self.m_device is None or self.is_running is False:
+            return
+
+        try:
+            self.m_node_map_remote_device.FindNode("AcquisitionStop").Execute()
+
+            self.m_dataStream.KillWait()
+            self.m_dataStream.StopAcquisition(peak.AcquisitionStopMode_Default)
+            self.m_dataStream.Flush(peak.DataStreamFlushMode_DiscardAll)
+
+            self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(0)
+        except peak.Exception as e:
+            self.__logger.error(e)
+
         self.camera_is_open = False
 
     def suspend_live(self):
-        self.camera.release()
         self.camera_is_open = False
 
     def prepare_live(self):
         pass
 
     def close(self):
-        self.camera.release()
         self.camera_is_open = False
         
     def set_value(self ,feature_key, feature_value):
         # Need to change acquisition parameters?
         try:
-            feature = self.camera.feature(feature_key)
-            feature.value = feature_value
-        except Exception as e:
+            self.m_node_map_remote_device.FindNode(feature_key).SetValue(feature_value)
+        except peak.Exception as e:
             self.__logger.error(e)
             self.__logger.error(feature_key)
             self.__logger.debug("Value not available?")
@@ -94,12 +112,13 @@ class IDSCamera:
 
             frame = np.mean(image_np_array)
 
+            return frame
+
         except peak.Exception as e:
-            self.__error_counter += 1
+            self.__logger.debug("Get Last was a problem!")
             self.__logger.error(e)
 
-        return frame
-
+        
     def getLastChunk(self):
         try:
             # Get buffer from device's DataStream
@@ -111,17 +130,17 @@ class IDSCamera:
         
             # Create IDS peak IPL image for debayering and convert it to RGBa8 format
             image = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
-                buffer.PixelFormat(),
-                buffer.BasePtr(),
-                buffer.Size(),
-                buffer.Width(),
-                buffer.Height()
+                self.buffer.PixelFormat(),
+                self.buffer.BasePtr(),
+                self.buffer.Size(),
+                self.buffer.Width(),
+                self.buffer.Height()
             )
             image = image.ConvertTo(ids_peak_ipl.PixelFormatName.BGRa8)
         
             # Queue buffer so that it can be used again
             self.m_data_stream.QueueBuffer(buffer)
-        except Exception as e:
+        except peak.Exception as e:
             self.__logger.error(e)
        
     def setROI(self, x, y, width, height):
@@ -157,20 +176,46 @@ class IDSCamera:
                 self.m_node_map_remote_device.FindNode("Height").SetValue(height)
         
                 return True
-        except Exception as e:
+        except peak.Exception as e:
             # ...
             self.__logger.error(e)
         
         return False
 
-    def setPropertyValue(self, property_name, property_value):
-        pass
-
-    def getPropertyValue(self, property_name):
-        pass
-
     def openPropertiesGUI(self):
         pass
+
+    def setPropertyValue(self, property_name, property_value):
+        # Check if the property exists.
+        if property_name == "gain":
+            self.set_analog_gain(property_value)
+        elif property_name == "exposure":
+            self.set_exposure_time(property_value)
+        elif property_name == "blacklevel":
+            self.set_blacklevel(property_value)
+        else:
+            self.__logger.warning(f'Property {property_name} does not exist')
+            return False
+        return property_value
+
+    def getPropertyValue(self, property_name):
+        # Check if the property exists.
+        if property_name == "gain":
+            property_value = self.gain
+        elif property_name == "exposure":
+            property_value = self.exposure
+        elif property_name == "blacklevel":
+            property_value = self.blacklevel
+        elif property_name == "image_width":
+            property_value = self.SensorWidth
+        elif property_name == "image_height":
+            property_value = self.SensorHeight
+        elif property_name == "pixel_format":
+            property_value = self.PixelFormat
+        else:
+            self.__logger.warning(f'Property {property_name} does not exist')
+            return False
+        return property_value
 
     def openCamera(self):
         try:
@@ -183,25 +228,23 @@ class IDSCamera:
             device_count = device_manager.Devices().size()
             for i in range(device_count):
                 if device_manager.Devices()[i].IsOpenable():
-                    m_device = device_manager.Devices()[i].OpenDevice(peak.DeviceAccessType_Control)
+                    self.m_device = device_manager.Devices()[i].OpenDevice(peak.DeviceAccessType_Control)
         
                     # Get NodeMap of the RemoteDevice for all accesses to the GenICam NodeMap tree
-                    self.m_node_map_remote_device = m_device.RemoteDevice().NodeMaps()[0]
+                    self.m_node_map_remote_device = self.m_device.RemoteDevice().NodeMaps()[0]
     
-            self.camera = m_device
-
+            
             if not self.prepare_acquisition():
-                # error
                 self.__logger.error("Error occured! Couldn't prepare acquisition")
             
-            if not self.set_roi(16, 16, 128, 128):
-                # error
+            if not self.setROI(16, 16, 256, 256):
                 self.__logger.error("Error occured! Couldn't set roi")
             
             if not self.alloc_and_announce_buffers():
-                # error
                 self.__logger.error("Error occured! Couldn't allocate buffer")
-        except Exception as e:
+                
+            self.camera = self.m_device
+        except peak.Exception as e:
             self.__logger.error(e)
         
     
@@ -212,10 +255,10 @@ class IDSCamera:
             if data_streams.empty():
                 return False
         
-            self.m_dataStream = self.m_device.DataStreams()[0].OpenDataStream()
+            self.m_dataStream = data_streams[0].OpenDataStream()
         
             return True
-        except Exception as e:
+        except peak.Exception as e:
             self.__logger.error(e)
         
         return False
@@ -241,9 +284,23 @@ class IDSCamera:
                     buffer = self.m_dataStream.AllocAndAnnounceBuffer(payload_size)
                     self.m_dataStream.QueueBuffer(buffer)
         
+                self.__logger.debug("Payload Size: " + str(payload_size))
+                self.__logger.debug("Min Buffer: " + str(num_buffers_min_required))
+                self.__logger.debug("Allocating buffer!")
+
                 return True
-        except Exception as e:
+        except peak.Exception as e:
             self.__logger.error(e)
         
         return False
 
+
+'''
+buffer too small!!
+
+262144<>2304000
+262144<>2304000
+262144<>2304000
+
+
+'''
