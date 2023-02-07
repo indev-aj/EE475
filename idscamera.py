@@ -132,7 +132,7 @@ class IDSCamera:
         try:
             buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
 
-            # Create IDS peak IPL image for debayering and convert it to RGBa8 format
+            # Create IDS peak IPL image for debayering and convert it to [desired] format
             ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
             converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono12)
 
