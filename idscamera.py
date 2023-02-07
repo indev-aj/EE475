@@ -6,6 +6,9 @@ from ids_peak import ids_peak as peak
 from ids_peak_ipl import ids_peak_ipl
 from ids_peak import ids_peak_ipl_extension
 
+from PyQt5.QtGui import QImage
+import qimage2ndarray
+
 from imswitch.imcommon.model import initLogger
 
 
@@ -23,13 +26,8 @@ class IDSCamera:
         self.analog_gain = 1
         self.pixel_format = "Mono12"
 
-        self.frame_id_last = 0
-
-        self.PreviewWidthRatio = 4
-        self.PreviewHeightRatio = 4
-        
-        self.SensorWidth = 1920
-        self.SensorHeight = 1200
+        self.SensorWidth = 1000
+        self.SensorHeight = 1000
         self.shape = (self.SensorWidth,self.SensorHeight)
         
         self.is_running = False
@@ -37,12 +35,29 @@ class IDSCamera:
 
 
     def start_live(self):
+        if self.m_device is None:
+            self.__logger.debug("No device found!")
+            return
+
         try:
+            if not self.prepare_acquisition():
+                self.__logger.error("Error occured! Couldn't prepare acquisition")
+            
+            if not self.setROI(128, 128, 800, 600):
+                self.__logger.error("Error occured! Couldn't set roi")
+            
+            if not self.alloc_and_announce_buffers():
+                self.__logger.error("Error occured! Couldn't allocate buffer")
+
+            if not self.set_framerate():
+                self.__logger.error("Error occured! Couldn't set framerate")
+
             self.m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
             self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
             self.m_node_map_remote_device.FindNode("AcquisitionStart").Execute()
 
             self.is_running = True
+            self.__logger.debug("Starting the live")
         except peak.Exception as e:
             self.__logger.debug("Start Live was a problem!")
             self.__logger.error(e)
@@ -77,7 +92,11 @@ class IDSCamera:
     def set_value(self ,feature_key, feature_value):
         # Need to change acquisition parameters?
         try:
-            self.m_node_map_remote_device.FindNode(feature_key).SetValue(feature_value)
+            if feature_key == "PixelFormat":
+                self.m_node_map_remote_device.FindNode("PixelFormat").SetCurrentEntry(feature_value)
+            else:
+                self.m_node_map_remote_device.FindNode(feature_key).SetValue(feature_value)
+            
         except peak.Exception as e:
             self.__logger.error(e)
             self.__logger.error(feature_key)
@@ -98,21 +117,35 @@ class IDSCamera:
 
     def set_pixel_format(self,format):
         self.pixelformat = format
-        self.set_value("PixelFormat", format)
+        self.set_value("PixelFormat", self.pixelformat)
+
+    def set_image_width(self, width):
+        self.SensorWidth = width
+        self.set_value("Width", self.SensorWidth)
+
+    def set_image_height(self, height):
+        self.SensorHeight = height
+        self.set_value("Height", self.SensorHeight)
         
     def getLast(self):
         # get frame and save
         try:
             buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
+
+            # Create IDS peak IPL image for debayering and convert it to RGBa8 format
             ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
-            converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_BGRa8)
+            converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono12)
+
+            image_np_array = converted_ipl_image.get_numpy_2D()
+
+
+            # self.__logger.warning("Image Width: " + str(converted_ipl_image.Width()))
+            # self.__logger.warning("Image Height: " + str(converted_ipl_image.Height()))
 
             self.m_dataStream.QueueBuffer(buffer)
-            image_np_array = converted_ipl_image.get_numpy_1D()
 
-            frame = np.mean(image_np_array)
+            return image_np_array
 
-            return frame
 
         except peak.Exception as e:
             self.__logger.debug("Get Last was a problem!")
@@ -193,8 +226,14 @@ class IDSCamera:
             self.set_exposure_time(property_value)
         elif property_name == "blacklevel":
             self.set_blacklevel(property_value)
+        elif property_name == "image_width":
+            self.set_image_width(property_value)
+        elif property_name == "image_height":
+            self.set_image_height(property_value)
+        elif property_name == "pixel_format":
+            self.set_pixel_format(property_value)
         else:
-            self.__logger.warning(f'Property {property_name} does not exist')
+            self.__logger.warning(f'Set Property {property_name} does not exist')
             return False
         return property_value
 
@@ -213,7 +252,7 @@ class IDSCamera:
         elif property_name == "pixel_format":
             property_value = self.PixelFormat
         else:
-            self.__logger.warning(f'Property {property_name} does not exist')
+            self.__logger.warning(f'Get Property {property_name} does not exist')
             return False
         return property_value
 
@@ -233,15 +272,6 @@ class IDSCamera:
                     # Get NodeMap of the RemoteDevice for all accesses to the GenICam NodeMap tree
                     self.m_node_map_remote_device = self.m_device.RemoteDevice().NodeMaps()[0]
     
-            
-            if not self.prepare_acquisition():
-                self.__logger.error("Error occured! Couldn't prepare acquisition")
-            
-            if not self.setROI(16, 16, 256, 256):
-                self.__logger.error("Error occured! Couldn't set roi")
-            
-            if not self.alloc_and_announce_buffers():
-                self.__logger.error("Error occured! Couldn't allocate buffer")
                 
             self.camera = self.m_device
         except peak.Exception as e:
@@ -294,13 +324,34 @@ class IDSCamera:
         
         return False
 
+    
+    def set_framerate(self, target=None):
+        try:
+            min_frame_rate = 0
+            max_frame_rate = 0
+            inc_frame_rate = 0
 
-'''
-buffer too small!!
+            # Get frame rate range. All values in fps.
+            min_frame_rate = self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").Minimum()
+            max_frame_rate = self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").Maximum()
+            
+            if self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").HasConstantIncrement():
+                inc_frame_rate = self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").Increment()
+            else:
+                # If there is no increment, it might be useful to choose a suitable increment for a GUI control element (e.g. a slider)
+                inc_frame_rate = 0.1
+            
+            # Get the current frame rate
+            frame_rate = self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").Value()
+            
+            if target is None:
+                # Set frame rate to maximum
+                self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(max_frame_rate)
+            else:
+                self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(target)
 
-262144<>2304000
-262144<>2304000
-262144<>2304000
+            return True
+        except peak.Exception as e:
+            self.__logger.error(e)
 
-
-'''
+        return False
