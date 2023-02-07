@@ -1,13 +1,7 @@
-# image processing libraries
-import numpy as np
-
 # import IDS libraries
 from ids_peak import ids_peak as peak
 from ids_peak_ipl import ids_peak_ipl
 from ids_peak import ids_peak_ipl_extension
-
-from PyQt5.QtGui import QImage
-import qimage2ndarray
 
 from imswitch.imcommon.model import initLogger
 
@@ -128,7 +122,10 @@ class IDSCamera:
         self.set_value("Height", self.SensorHeight)
         
     def getLast(self):
-        # get frame and save
+        # TODO
+        # convert buffer into image using algorithm in getLastChuck
+        # apply np.mean() to the image array
+        # proper error handling
         try:
             buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
 
@@ -138,12 +135,7 @@ class IDSCamera:
 
             image_np_array = converted_ipl_image.get_numpy_2D()
 
-
-            # self.__logger.warning("Image Width: " + str(converted_ipl_image.Width()))
-            # self.__logger.warning("Image Height: " + str(converted_ipl_image.Height()))
-
             self.m_dataStream.QueueBuffer(buffer)
-
             return image_np_array
 
 
@@ -348,7 +340,7 @@ class IDSCamera:
                 # Set frame rate to maximum
                 self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(max_frame_rate)
             else:
-                self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(target)
+                self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(float(target))
 
             return True
         except peak.Exception as e:
