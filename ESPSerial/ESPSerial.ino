@@ -14,32 +14,77 @@
 
 int r = 2;
 int b = 4;
+int btn = 23; // interrupt button
 
-int stageDir = 18;
-int stageMove = 19;
+int stageDir = 18; // controls direction of stage
+int stageMove = 19; // controls how many steps does stage move
 
 const byte numChars = 32;
 char receivedChars[numChars];
+
+char tempChars[numChars];
+char instructions[numChars] = {0};
 
 char startMarker = '<';
 char endMarker = '>';
 
 boolean newData = false;
+volatile bool interrupted = false;
+
+void IRAM_ATTR isr()
+{
+  interrupted = true;
+  digitalWrite(r, LOW);
+  digitalWrite(b, LOW);
+
+  digitalWrite(stageDir, LOW);
+  digitalWrite(stageMove, LOW);
+}
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+
   pinMode(r, OUTPUT);
   pinMode(b, OUTPUT);
 
   pinMode(stageDir, OUTPUT);
   pinMode(stageMove, OUTPUT);
+
+  pinMode(btn, INPUT_PULLUP);
+  attachInterrupt(btn, isr, RISING);
+
+
+  digitalWrite(b, HIGH);
+  digitalWrite(r, HIGH);
+  digitalWrite(stageDir, HIGH);
+  digitalWrite(stageMove, HIGH);
+  delay(500);
+  digitalWrite(b, LOW);
+  digitalWrite(r, LOW);
+  digitalWrite(stageDir, LOW);
+  digitalWrite(stageMove, LOW);
+  delay(500);
 }
+
+char* sep;
 
 void loop() {
   // put your main code here, to run repeatedly:
+  interrupted = false;
+
   recvWithStartEndMarkers();
-  showNewData();
+  if (newData) {
+    strcpy(tempChars, receivedChars);
+    sep = strtok(tempChars, ",");
+    while (sep != NULL) {
+      showNewData(sep);
+      Serial.println(sep);
+      sep = strtok(NULL, ",");
+    }
+
+  }
+
 }
 
 void recvWithStartEndMarkers() {
@@ -76,82 +121,86 @@ void recvWithStartEndMarkers() {
 
 int steps;
 char nums[4];
-void showNewData() {
 
-  char prefix[2];
+void showNewData(char* instruction) {
 
-  if (newData == true) {
-    Serial.print("This just in ... ");
-    Serial.println(receivedChars);
-    newData = false;
+  char prefix[3];
 
-    // Laser controls
-    if (strcmp(receivedChars, "L1ON") == 0) {
-      digitalWrite(r, HIGH);
-    } else if (strcmp(receivedChars, "L1OF") == 0) {
-      digitalWrite(r, LOW);
-    }
+  Serial.print("This just in ... ");
+  Serial.println(instruction);
+  newData = false;
 
-    if (strcmp(receivedChars, "L2ON") == 0) {
-      digitalWrite(b, HIGH);
-    } else if (strcmp(receivedChars, "L2OF") == 0) {
-      digitalWrite(b, LOW);
-    }
+  // Laser controls
+  if (strcmp(instruction, "L1ON") == 0) {
+    digitalWrite(r, HIGH);
+  } else if (strcmp(instruction, "L1OF") == 0) {
+    digitalWrite(r, LOW);
+  }
 
-    // Stage controls
-    /* Steps:
-        1. Check which stage to command
-        2. Check which direction
-        3. Get steps amount
+  if (strcmp(instruction, "L2ON") == 0) {
+    digitalWrite(b, HIGH);
+  } else if (strcmp(instruction, "L2OF") == 0) {
+    digitalWrite(b, LOW);
+  }
 
-        eg. S1P1000 - Stage 1, positive direction, 1000 steps
-        eg. S2N1000 - Stage 2, negative direction, 1000 steps
-    */
+  // Stage controls
+  /* Steps:
+      1. Check which stage to command
+      2. Check which direction
+      3. Get steps amount
 
-    memcpy(prefix, receivedChars, 2);
-    char dir = receivedChars[2];
+      eg. S1P1000 - Stage 1, positive direction, 1000 steps
+      eg. S2N1000 - Stage 2, negative direction, 1000 steps
+  */
 
-    Serial.println(prefix);
-    Serial.println(dir);
+  memcpy(prefix, instruction, 2);
+  prefix[2] = '\0';
+  char dir = instruction[2];
 
-    if (strcmp(prefix, "S1") == 0) {
-      switch (dir) {
-        case 'P':
-          steps = getStep();
-          Serial.print("Moving Positive: ");
-          Serial.print(steps);
-          
-          digitalWrite(stageDir, HIGH);
-          for(int i=0;i<steps;i++) {
-            digitalWrite(stageMove, HIGH);
-            delay(500);
-            digitalWrite(stageMove, LOW);
-            delay(500);
-          }
-          break;
-        case 'N':
-          steps = getStep();
-          Serial.print("Moving Negative: ");
-          Serial.print(steps);
+  Serial.println(prefix);
+  Serial.println(dir);
 
-          digitalWrite(stageDir, LOW);
-          for(int i=0;i<steps;i++) {
-            digitalWrite(stageMove, HIGH);
-            delay(500);
-            digitalWrite(stageMove, LOW);
-            delay(500);
-          }
-          break;
-        default:
-          Serial.println("Nothing goes here!");
-      }
+  if (strcmp(prefix, "S1") == 0) {
+    switch (dir) {
+      case 'P':
+        steps = getStep(instruction);
+        Serial.print("Moving Positive: ");
+        Serial.print(steps);
+
+        digitalWrite(stageDir, HIGH);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stageMove, HIGH);
+          delay(500);
+          digitalWrite(stageMove, LOW);
+          delay(500);
+        }
+        break;
+      case 'N':
+        steps = getStep(instruction);
+        Serial.print("Moving Negative: ");
+        Serial.print(steps);
+
+        digitalWrite(stageDir, LOW);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stageMove, HIGH);
+          delay(500);
+          digitalWrite(stageMove, LOW);
+          delay(500);
+        }
+        break;
+      default:
+        Serial.println("Nothing goes here!");
     }
   }
 }
 
-int getStep() {
+int getStep(char* instruction) {
   for (int i = 0; i <= 4; i++) {
-    nums[i] = receivedChars[i + 1];
+    nums[i] = instruction[i + 3];
   }
 
   return atoi(nums);
