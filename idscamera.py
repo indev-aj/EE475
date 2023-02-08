@@ -3,6 +3,8 @@ from ids_peak import ids_peak as peak
 from ids_peak_ipl import ids_peak_ipl
 from ids_peak import ids_peak_ipl_extension
 
+import numpy as np
+
 from imswitch.imcommon.model import initLogger
 
 
@@ -18,7 +20,7 @@ class IDSCamera:
         self.blacklevel = 15
         self.exposure_time = 30
         self.analog_gain = 1
-        self.pixel_format = "Mono12"
+        self.pixel_format = "Mono8"
 
         self.SensorWidth = 1000
         self.SensorHeight = 1000
@@ -123,15 +125,24 @@ class IDSCamera:
         
     def getLast(self):
         # TODO
-        # convert buffer into image using algorithm in getLastChuck
-        # apply np.mean() to the image array
+        # convert buffer into image using algorithm in getLastChuck [SOLVED]
+        # apply np.mean() to the image array [NO NEED]
         # proper error handling
         try:
             buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
 
             # Create IDS peak IPL image for debayering and convert it to [desired] format
-            ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
-            converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono12)
+            # ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
+            # converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono12)
+
+            image = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
+                buffer.PixelFormat(),
+                buffer.BasePtr(),
+                buffer.Size(),
+                buffer.Width(),
+                buffer.Height()
+            )
+            converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
 
             image_np_array = converted_ipl_image.get_numpy_2D()
 
