@@ -3,10 +3,9 @@ from ids_peak import ids_peak as peak
 from ids_peak_ipl import ids_peak_ipl
 from ids_peak import ids_peak_ipl_extension
 
-import numpy as np
-
 from imswitch.imcommon.model import initLogger
 
+import numpy as np
 
 class IDSCamera:
     def __init__(self):
@@ -21,6 +20,7 @@ class IDSCamera:
         self.exposure_time = 30
         self.analog_gain = 1
         self.pixel_format = "Mono8"
+        self.target_fps = 30
 
         self.SensorWidth = 1920
         self.SensorHeight = 1200
@@ -50,7 +50,7 @@ class IDSCamera:
             if not self.alloc_and_announce_buffers():
                 self.__logger.warning("Warning! Couldn't allocate buffer")
 
-            if not self.set_framerate(30):
+            if not self.set_framerate(self.target_fps):
                 self.__logger.warning("Warning! Couldn't set framerate")
 
             self.m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
@@ -87,8 +87,6 @@ class IDSCamera:
             self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(0)
 
             self.m_dataStream.StopAcquisition(peak.AcquisitionStopMode_Default)
-
-            # Delete buffer pool
             
             self.camera_is_open = False
         except peak.Exception as e:
@@ -101,7 +99,6 @@ class IDSCamera:
         self.camera_is_open = False
         
     def set_value(self ,feature_key, feature_value):
-        # Need to change acquisition parameters?
         try:
             if feature_key == "PixelFormat":
                 self.m_node_map_remote_device.FindNode("PixelFormat").SetCurrentEntry(feature_value)
@@ -151,12 +148,6 @@ class IDSCamera:
                 buffer.Height()
             )
 
-            # hot pixels corrections
-            # m_hotpixel_correction = ids_peak_ipl.HotpixelCorrection()
-
-            # vec = m_hotpixel_correction.Detect(image)
-            # image = m_hotpixel_correction.Correct(image, vec)
-
             converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
             
             # get numpy array from image
@@ -164,8 +155,6 @@ class IDSCamera:
 
             self.m_dataStream.QueueBuffer(buffer)
             return image_np_array
-
-
         except peak.Exception as e:
             self.__logger.debug("Get Last was a problem!")
             self.__logger.error(e)
@@ -180,7 +169,7 @@ class IDSCamera:
                 self.m_node_map_remote_device.UpdateChunkNodes(buffer)
                 exposure_time = self.m_node_map_remote_device.FindNode("ChunkExposureTime").Value()
         
-            # Create IDS peak IPL image for debayering and convert it to RGBa8 format
+            # Create IDS peak IPL image for debayering and convert it to [desired] format
             image = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
                 self.buffer.PixelFormat(),
                 self.buffer.BasePtr(),
@@ -188,10 +177,14 @@ class IDSCamera:
                 self.buffer.Width(),
                 self.buffer.Height()
             )
-            image = image.ConvertTo(ids_peak_ipl.PixelFormatName.BGRa8)
+
+            converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
+            
+            # get numpy array from image
+            image_np_array = converted_ipl_image.get_numpy_2D()
         
-            # Queue buffer so that it can be used again
             self.m_data_stream.QueueBuffer(buffer)
+            return image_np_array
         except peak.Exception as e:
             self.__logger.error(e)
        
@@ -200,6 +193,13 @@ class IDSCamera:
 
             # self.__logger.debug("Setting ROI with value")
             # self.__logger.debug("Height: " + str(height) + " Width: " + str(width))
+
+            # TODO find nearest number dividable by 8 for width and height
+            while width % 8 != 0:
+                width -= 1
+
+            while height % 8 != 0:
+                height -= 1
 
             # Get the minimum ROI and set it. After that there are no size restrictions anymore
             x_min = self.m_node_map_remote_device.FindNode("OffsetX").Minimum()
@@ -225,6 +225,10 @@ class IDSCamera:
                 self.__logger.warning("ROI size is wrong! Setting to maximum value!")
                 self.m_node_map_remote_device.FindNode("Width").SetValue(w_max)
                 self.m_node_map_remote_device.FindNode("Height").SetValue(h_max)
+
+                # set property value (hopefully this reflects settings in real time)
+                self.set_image_height(h_max)
+                self.set_image_width(w_max)
                 return True
             else:
                 # Now, set final ROI
@@ -232,6 +236,10 @@ class IDSCamera:
                 self.m_node_map_remote_device.FindNode("OffsetY").SetValue(y)
                 self.m_node_map_remote_device.FindNode("Width").SetValue(width)
                 self.m_node_map_remote_device.FindNode("Height").SetValue(height)
+                
+                # set property value (hopefully this reflects settings in real time)
+                self.set_image_height(height)
+                self.set_image_width(width)
         
                 return True
         except peak.Exception as e:
@@ -297,9 +305,8 @@ class IDSCamera:
                     # Get NodeMap of the RemoteDevice for all accesses to the GenICam NodeMap tree
                     self.m_node_map_remote_device = self.m_device.RemoteDevice().NodeMaps()[0]
     
-            self.camera = self.m_device
-
             self.set_binning(1)
+            self.camera = self.m_device
         except peak.Exception as e:
             self.__logger.error(e)
         
@@ -368,7 +375,7 @@ class IDSCamera:
             # Get the current frame rate
             frame_rate = self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").Value()
             
-            if target is None:
+            if target is None or target > max_frame_rate or target < min_frame_rate:
                 # Set frame rate to maximum
                 self.m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(max_frame_rate)
             else:
@@ -382,15 +389,15 @@ class IDSCamera:
 
     def set_binning(self, binning=1):
         try:
-            # Set BinningSelector to "Region0" (str)
+            # set BinningSelector to "Region0"
             self.m_node_map_remote_device.FindNode("BinningSelector").SetCurrentEntry("Region0")
             
-            # Determine the current BinningHorizontal (int)
+            # determine the current BinningHorizontal 
             h_binning = self.m_node_map_remote_device.FindNode("BinningHorizontal").Value()
             self.__logger.debug("Current Binning: " + str(h_binning))
             self.__logger.debug("Target Binning: " + str(binning))
             
-            # Set BinningHorizontal to 1 (int)
+            # set binning value
             self.m_node_map_remote_device.FindNode("BinningHorizontal").SetValue(int(binning))
             self.m_node_map_remote_device.FindNode("BinningVertical").SetValue(int(binning))
         except peak.Exception as e:
