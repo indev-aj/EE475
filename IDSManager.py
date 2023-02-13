@@ -40,10 +40,10 @@ class IDSManager(DetectorManager):
             'blacklevel': DetectorNumberParameter(group='Misc', value=100, valueUnits='arb.u.',
                                             editable=True),
             'image_width': DetectorNumberParameter(group='Misc', value=fullShape[0], valueUnits='arb.u.',
-                        editable=False),
+                        editable=True),
             'image_height': DetectorNumberParameter(group='Misc', value=fullShape[1], valueUnits='arb.u.',
-                        editable=False),
-            'pixel_format': DetectorListParameter(group='Misc', value='Mono12', options=['Mono8','Mono12'], editable=True)
+                        editable=True),
+            'pixel_format': DetectorListParameter(group='Misc', value='Mono8', options=['Mono8'], editable=True)
             }            
 
         # Prepare actions
@@ -52,7 +52,7 @@ class IDSManager(DetectorManager):
                                               func=self._camera.openPropertiesGUI)
         }
 
-        super().__init__(detectorInfo, name, fullShape=fullShape, supportedBinnings=[1],
+        super().__init__(detectorInfo, name, fullShape=fullShape, supportedBinnings=[1, 2],
                          model=model, parameters=parameters, actions=actions, croppable=True)
 
     def getLatestFrame(self, is_save=False):
@@ -88,7 +88,9 @@ class IDSManager(DetectorManager):
         return value
 
     def setBinning(self, binning):
-        super().setBinning(binning) 
+        super().setBinning(binning)
+
+        self._camera.set_binning(binning)
         
     def getChunk(self):        
         return np.expand_dims(self._camera.getLastChunk(),0)

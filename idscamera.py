@@ -22,11 +22,16 @@ class IDSCamera:
         self.analog_gain = 1
         self.pixel_format = "Mono8"
 
-        self.SensorWidth = 1000
-        self.SensorHeight = 1000
+        self.SensorWidth = 1920
+        self.SensorHeight = 1200
         self.shape = (self.SensorWidth,self.SensorHeight)
         
         self.is_running = False
+
+        self.m_device = None
+        self.m_dataStream = None
+        self.m_node_map_remote_device = None
+
         self.openCamera()
 
 
@@ -37,23 +42,22 @@ class IDSCamera:
 
         try:
             if not self.prepare_acquisition():
-                self.__logger.error("Error occured! Couldn't prepare acquisition")
+                self.__logger.warning("Warning! Couldn't prepare acquisition")
             
-            if not self.setROI(128, 128, 800, 600):
-                self.__logger.error("Error occured! Couldn't set roi")
+            if not self.setROI(0, 0, int(self.SensorWidth), int(self.SensorHeight)):
+                self.__logger.warning("Warning! Couldn't set roi")
             
             if not self.alloc_and_announce_buffers():
-                self.__logger.error("Error occured! Couldn't allocate buffer")
+                self.__logger.warning("Warning! Couldn't allocate buffer")
 
-            if not self.set_framerate():
-                self.__logger.error("Error occured! Couldn't set framerate")
+            if not self.set_framerate(30):
+                self.__logger.warning("Warning! Couldn't set framerate")
 
             self.m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
             self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
             self.m_node_map_remote_device.FindNode("AcquisitionStart").Execute()
 
             self.is_running = True
-            self.__logger.debug("Starting the live")
         except peak.Exception as e:
             self.__logger.debug("Start Live was a problem!")
             self.__logger.error(e)
@@ -77,7 +81,18 @@ class IDSCamera:
         self.camera_is_open = False
 
     def suspend_live(self):
-        self.camera_is_open = False
+        try:
+            self.__logger.debug("Suspending live")
+            self.m_node_map_remote_device.FindNode("AcquisitionStop").Execute()
+            self.m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(0)
+
+            self.m_dataStream.StopAcquisition(peak.AcquisitionStopMode_Default)
+
+            # Delete buffer pool
+            
+            self.camera_is_open = False
+        except peak.Exception as e:
+            self.__logger.error(e)
 
     def prepare_live(self):
         pass
@@ -117,24 +132,17 @@ class IDSCamera:
 
     def set_image_width(self, width):
         self.SensorWidth = width
-        self.set_value("Width", self.SensorWidth)
+        self.set_value("Width", int(self.SensorWidth))
 
     def set_image_height(self, height):
         self.SensorHeight = height
-        self.set_value("Height", self.SensorHeight)
+        self.set_value("Height", int(self.SensorHeight))
         
     def getLast(self):
-        # TODO
-        # convert buffer into image using algorithm in getLastChuck [SOLVED]
-        # apply np.mean() to the image array [NO NEED]
-        # proper error handling
         try:
             buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
 
             # Create IDS peak IPL image for debayering and convert it to [desired] format
-            # ipl_image = ids_peak_ipl_extension.BufferToImage(buffer)
-            # converted_ipl_image = ipl_image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono12)
-
             image = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
                 buffer.PixelFormat(),
                 buffer.BasePtr(),
@@ -142,8 +150,16 @@ class IDSCamera:
                 buffer.Width(),
                 buffer.Height()
             )
-            converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
 
+            # hot pixels corrections
+            # m_hotpixel_correction = ids_peak_ipl.HotpixelCorrection()
+
+            # vec = m_hotpixel_correction.Detect(image)
+            # image = m_hotpixel_correction.Correct(image, vec)
+
+            converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
+            
+            # get numpy array from image
             image_np_array = converted_ipl_image.get_numpy_2D()
 
             self.m_dataStream.QueueBuffer(buffer)
@@ -181,6 +197,10 @@ class IDSCamera:
        
     def setROI(self, x, y, width, height):
         try:
+
+            # self.__logger.debug("Setting ROI with value")
+            # self.__logger.debug("Height: " + str(height) + " Width: " + str(width))
+
             # Get the minimum ROI and set it. After that there are no size restrictions anymore
             x_min = self.m_node_map_remote_device.FindNode("OffsetX").Minimum()
             y_min = self.m_node_map_remote_device.FindNode("OffsetY").Minimum()
@@ -202,10 +222,12 @@ class IDSCamera:
                 self.__logger.error("Offset value is wrong!")
                 return False
             elif (width < w_min) or (height < h_min) or ((x + width) > w_max) or ((y + height) > h_max):
-                self.__logger.error("ROI size is wrong!")
-                return False
+                self.__logger.warning("ROI size is wrong! Setting to maximum value!")
+                self.m_node_map_remote_device.FindNode("Width").SetValue(w_max)
+                self.m_node_map_remote_device.FindNode("Height").SetValue(h_max)
+                return True
             else:
-                # Now, set final AOI
+                # Now, set final ROI
                 self.m_node_map_remote_device.FindNode("OffsetX").SetValue(x)
                 self.m_node_map_remote_device.FindNode("OffsetY").SetValue(y)
                 self.m_node_map_remote_device.FindNode("Width").SetValue(width)
@@ -275,22 +297,25 @@ class IDSCamera:
                     # Get NodeMap of the RemoteDevice for all accesses to the GenICam NodeMap tree
                     self.m_node_map_remote_device = self.m_device.RemoteDevice().NodeMaps()[0]
     
-                
             self.camera = self.m_device
+
+            self.set_binning(1)
         except peak.Exception as e:
             self.__logger.error(e)
         
     
     def prepare_acquisition(self):
         try:
-            data_streams = self.m_device.DataStreams()
-            # no data streams available
-            if data_streams.empty():
-                return False
-        
-            self.m_dataStream = data_streams[0].OpenDataStream()
-        
-            return True
+            if self.m_device:
+                data_streams = self.m_device.DataStreams()
+                # no data streams available
+                if data_streams.empty():
+                    return False
+            
+                if self.m_dataStream is None:
+                    self.m_dataStream = data_streams[0].OpenDataStream()
+            
+                return True
         except peak.Exception as e:
             self.__logger.error(e)
         
@@ -316,10 +341,6 @@ class IDSCamera:
                 for count in range(num_buffers_min_required):
                     buffer = self.m_dataStream.AllocAndAnnounceBuffer(payload_size)
                     self.m_dataStream.QueueBuffer(buffer)
-        
-                self.__logger.debug("Payload Size: " + str(payload_size))
-                self.__logger.debug("Min Buffer: " + str(num_buffers_min_required))
-                self.__logger.debug("Allocating buffer!")
 
                 return True
         except peak.Exception as e:
@@ -358,3 +379,19 @@ class IDSCamera:
             self.__logger.error(e)
 
         return False
+
+    def set_binning(self, binning=1):
+        try:
+            # Set BinningSelector to "Region0" (str)
+            self.m_node_map_remote_device.FindNode("BinningSelector").SetCurrentEntry("Region0")
+            
+            # Determine the current BinningHorizontal (int)
+            h_binning = self.m_node_map_remote_device.FindNode("BinningHorizontal").Value()
+            self.__logger.debug("Current Binning: " + str(h_binning))
+            self.__logger.debug("Target Binning: " + str(binning))
+            
+            # Set BinningHorizontal to 1 (int)
+            self.m_node_map_remote_device.FindNode("BinningHorizontal").SetValue(int(binning))
+            self.m_node_map_remote_device.FindNode("BinningVertical").SetValue(int(binning))
+        except peak.Exception as e:
+            self.__logger.error(e)
