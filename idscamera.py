@@ -5,8 +5,6 @@ from ids_peak import ids_peak_ipl_extension
 
 from imswitch.imcommon.model import initLogger
 
-import numpy as np
-
 class IDSCamera:
     def __init__(self):
         super().__init__()
@@ -189,17 +187,17 @@ class IDSCamera:
             self.__logger.error(e)
        
     def setROI(self, x, y, width, height):
+        # TODO find nearest number dividable by 8 for width and height
+        while width % 8 != 0:
+            width -= 1
+
+        while height % 8 != 0:
+            height -= 1
+
         try:
 
             # self.__logger.debug("Setting ROI with value")
             # self.__logger.debug("Height: " + str(height) + " Width: " + str(width))
-
-            # TODO find nearest number dividable by 8 for width and height
-            while width % 8 != 0:
-                width -= 1
-
-            while height % 8 != 0:
-                height -= 1
 
             # Get the minimum ROI and set it. After that there are no size restrictions anymore
             x_min = self.m_node_map_remote_device.FindNode("OffsetX").Minimum()
