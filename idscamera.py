@@ -161,7 +161,7 @@ class IDSCamera:
     def getLastChunk(self):
         try:
             # Get buffer from device's DataStream
-            buffer = self.m_data_stream.WaitForFinishedBuffer(5000)
+            buffer = self.m_dataStream.WaitForFinishedBuffer(5000)
         
             if buffer.HasChunks():
                 self.m_node_map_remote_device.UpdateChunkNodes(buffer)
@@ -169,11 +169,11 @@ class IDSCamera:
         
             # Create IDS peak IPL image for debayering and convert it to [desired] format
             image = ids_peak_ipl.Image_CreateFromSizeAndBuffer(
-                self.buffer.PixelFormat(),
-                self.buffer.BasePtr(),
-                self.buffer.Size(),
-                self.buffer.Width(),
-                self.buffer.Height()
+                buffer.PixelFormat(),
+                buffer.BasePtr(),
+                buffer.Size(),
+                buffer.Width(),
+                buffer.Height()
             )
 
             converted_ipl_image = image.ConvertTo(ids_peak_ipl.PixelFormatName_Mono8)
@@ -181,7 +181,7 @@ class IDSCamera:
             # get numpy array from image
             image_np_array = converted_ipl_image.get_numpy_2D()
         
-            self.m_data_stream.QueueBuffer(buffer)
+            self.m_dataStream.QueueBuffer(buffer)
             return image_np_array
         except peak.Exception as e:
             self.__logger.error(e)
@@ -224,9 +224,6 @@ class IDSCamera:
                 self.m_node_map_remote_device.FindNode("Width").SetValue(w_max)
                 self.m_node_map_remote_device.FindNode("Height").SetValue(h_max)
 
-                # set property value (hopefully this reflects settings in real time)
-                self.set_image_height(h_max)
-                self.set_image_width(w_max)
                 return True
             else:
                 # Now, set final ROI
@@ -234,10 +231,6 @@ class IDSCamera:
                 self.m_node_map_remote_device.FindNode("OffsetY").SetValue(y)
                 self.m_node_map_remote_device.FindNode("Width").SetValue(width)
                 self.m_node_map_remote_device.FindNode("Height").SetValue(height)
-                
-                # set property value (hopefully this reflects settings in real time)
-                self.set_image_height(height)
-                self.set_image_width(width)
         
                 return True
         except peak.Exception as e:
