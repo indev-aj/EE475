@@ -1,0 +1,74 @@
+{
+  "detectors": {
+    "WidefieldCamera": {
+      "managerName": "IDSManager",
+      "managerProperties": {
+        "cameraListIndex": 1,
+        "avcam": {
+          "exposure": 30,
+          "gain": 1,
+          "blacklevel": 15,
+          "image_width": 1920,
+          "image_height": 1200,
+          "pixel_format": "Mono8"
+        }
+      },
+      "forAcquisition": true
+    }
+  },
+  "rs232devices": {
+    "ESP32": {
+      "managerName": "ESP32Manager",
+      "managerProperties": {
+        "serialport": "/dev/ttyUSB0"
+      }
+    }
+  },
+  "lasers": {
+    "Laser 1": {
+      "analogChannel": null,
+      "digitalLine": null,
+      "managerName": "ESP32LEDLaserManagerEE",
+      "managerProperties": {
+        "rs232device": "ESP32",
+        "channel_index": 1
+      },
+      "wavelength": 488,
+      "valueRangeMin": 0,
+      "valueRangeMax": 32768
+    },
+    "Laser 2": {
+      "analogChannel": null,
+      "digitalLine": null,
+      "managerName": "ESP32LEDLaserManagerEE",
+      "managerProperties": {
+        "rs232device": "ESP32",
+        "channel_index": 2
+      },
+      "wavelength": 488,
+      "valueRangeMin": 0,
+      "valueRangeMax": 32768
+    }
+  },
+  "positioners": {
+    "ESP32Stage": {
+      "managerName": "ESP32StageManagerEE",
+      "managerProperties": {
+        "rs232device": "ESP32"
+      },
+      "axes": [
+        "X",
+        "Y",
+        "Z"
+      ],
+      "forScanning": true,
+      "forPositioning": true
+    }
+  },
+  "availableWidgets": [
+    "Settings",
+    "View",
+    "Image",
+    "Laser"
+  ]
+}
