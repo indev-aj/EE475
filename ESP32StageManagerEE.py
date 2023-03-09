@@ -18,49 +18,35 @@ class ESP32StageManagerEE(PositionerManager):
         self.__logger = initLogger(self, instanceName=name)
         self.board = self._rs232manager._esp32
 
-    def move(self, value: float, axis: str):
+    def move(self, value: int, axis: str):
+        dir = "P"
+        if value < 0:
+            dir = "N"
+        
+        value = abs(value)
+
         if axis == 'X':
-            self.board.move_rel((value, 0, 0), blocking=False)
+            cmd = "<S1" + dir + str(value) + ">"
         elif axis == 'Y':
-            self.board.move_rel((0, value, 0), blocking=False)
+            cmd = "<S2" + dir + str(value) + ">"
         elif axis == 'Z':
-            self.board.move_rel((0, 0, value), blocking=False)
+            cmd = "<S3" + dir + str(value) + ">"
         else:
             self.__logger.warning('Wrong axis, has to be "X" "Y" or "Z"')
             return
+
+        self.__logger.debug(cmd)
+        self._rs232manager.query(cmd)
         self._position[axis] = self._position[axis] + value
 
     def setPosition(self, value: float, axis: str):
         self._position[axis] = value
 
-    # test arrow key input
-    from PyQt5 import QtCore
+    def setSpeed(self, speed, axis):
+        pass
 
-    @shortcut(QtCore.Qt.Key_Up, "Move up")
-    def key_moveXup(self):
-        self.move(value=100, axis="X")
 
-    @shortcut(QtCore.Qt.Key_Down, "Move down")
-    def key_moveXdown(self):
-        self.move(value=-100, axis="X")
-
-    @shortcut(QtCore.Qt.Key_Left, "Move left")
-    def key_moveYleft(self):
-        self.move(value=-100, axis="Y")
-
-    @shortcut(QtCore.Qt.Key_Right, "Move right")
-    def key_moveYright(self):
-        self.move(value=100, axis="Y")
-
-    @shortcut("-", "Move Z up")
-    def key_moveZup(self):
-        self.move(value=100, axis="Z")
-
-    @shortcut("+", "Move Z down")
-    def key_moveZdown(self):
-        self.move(value=-100, axis="Z")
-
-# Copyright (C) 2020, 2021 The imswitch developers
+# # Copyright (C) 2020, 2021 The imswitch developers
 # This file is part of ImSwitch.
 #
 # ImSwitch is free software: you can redistribute it and/or modify
