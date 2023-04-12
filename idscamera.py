@@ -221,6 +221,7 @@ class IDSCamera:
                 return False
             elif (width < w_min) or (height < h_min) or ((x + width) > w_max) or ((y + height) > h_max):
                 self.__logger.warning("ROI size is wrong! Setting to maximum value!")
+                self.__logger.warning("Width: " + str(w_max) + " Height: " + str(h_max))
                 self.m_node_map_remote_device.FindNode("Width").SetValue(w_max)
                 self.m_node_map_remote_device.FindNode("Height").SetValue(h_max)
 

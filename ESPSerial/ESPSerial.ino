@@ -12,12 +12,16 @@
     - <L2OF>
 */
 
-int r = 2;
-int b = 4;
-int btn = 23; // interrupt button
+int laser1 = 2;
+int laser2 = 4;
+int btn = 21; // interrupt button
 
-int stageDir = 18; // controls direction of stage
-int stageMove = 19; // controls how many steps does stage move
+int stage1Dir = 18; // controls direction of stage
+int stage1Move = 19; // controls how many steps does stage move
+int stage2Dir = 22; // controls direction of stage
+int stage2Move = 23; // controls how many steps does stage move
+int stage3Dir = 12; // controls direction of stage
+int stage3Move = 13; // controls how many steps does stage move
 
 const byte numChars = 32;
 char receivedChars[numChars];
@@ -34,36 +38,52 @@ volatile bool interrupted = false;
 void IRAM_ATTR isr()
 {
   interrupted = true;
-  digitalWrite(r, LOW);
-  digitalWrite(b, LOW);
+  digitalWrite(laser1, LOW);
+  digitalWrite(laser2, LOW);
 
-  digitalWrite(stageDir, LOW);
-  digitalWrite(stageMove, LOW);
+  digitalWrite(stage1Dir, LOW);
+  digitalWrite(stage1Move, LOW);
+  digitalWrite(stage2Dir, LOW);
+  digitalWrite(stage2Move, LOW);
+  digitalWrite(stage3Dir, LOW);
+  digitalWrite(stage3Move, LOW);
 }
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
 
-  pinMode(r, OUTPUT);
-  pinMode(b, OUTPUT);
+  pinMode(laser1, OUTPUT);
+  pinMode(laser2, OUTPUT);
 
-  pinMode(stageDir, OUTPUT);
-  pinMode(stageMove, OUTPUT);
+  pinMode(stage1Dir, OUTPUT);
+  pinMode(stage1Move, OUTPUT);
+  pinMode(stage2Dir, OUTPUT);
+  pinMode(stage2Move, OUTPUT);
+  pinMode(stage3Dir, OUTPUT);
+  pinMode(stage3Move, OUTPUT);
 
   pinMode(btn, INPUT_PULLUP);
   attachInterrupt(btn, isr, RISING);
 
 
-  digitalWrite(b, HIGH);
-  digitalWrite(r, HIGH);
-  digitalWrite(stageDir, HIGH);
-  digitalWrite(stageMove, HIGH);
+  digitalWrite(laser2, HIGH);
+  digitalWrite(laser1, HIGH);
+  digitalWrite(stage1Dir, HIGH);
+  digitalWrite(stage1Move, HIGH);
+  digitalWrite(stage2Dir, HIGH);
+  digitalWrite(stage2Move, HIGH);
+  digitalWrite(stage3Dir, HIGH);
+  digitalWrite(stage3Move, HIGH);
   delay(500);
-  digitalWrite(b, LOW);
-  digitalWrite(r, LOW);
-  digitalWrite(stageDir, LOW);
-  digitalWrite(stageMove, LOW);
+  digitalWrite(laser2, LOW);
+  digitalWrite(laser1, LOW);
+  digitalWrite(stage1Dir, LOW);
+  digitalWrite(stage1Move, LOW);
+  digitalWrite(stage2Dir, LOW);
+  digitalWrite(stage2Move, LOW);
+  digitalWrite(stage3Dir, LOW);
+  digitalWrite(stage3Move, LOW);
   delay(500);
 }
 
@@ -132,15 +152,15 @@ void showNewData(char* instruction) {
 
   // Laser controls
   if (strcmp(instruction, "L1ON") == 0) {
-    digitalWrite(r, HIGH);
+    digitalWrite(laser1, HIGH);
   } else if (strcmp(instruction, "L1OF") == 0) {
-    digitalWrite(r, LOW);
+    digitalWrite(laser1, LOW);
   }
 
   if (strcmp(instruction, "L2ON") == 0) {
-    digitalWrite(b, HIGH);
+    digitalWrite(laser2, HIGH);
   } else if (strcmp(instruction, "L2OF") == 0) {
-    digitalWrite(b, LOW);
+    digitalWrite(laser2, LOW);
   }
 
   // Stage controls
@@ -167,14 +187,14 @@ void showNewData(char* instruction) {
         Serial.print("Moving Positive: ");
         Serial.print(steps);
 
-        digitalWrite(stageDir, HIGH);
+        digitalWrite(stage1Dir, HIGH);
         for (int i = 0; i < steps; i++) {
           if (interrupted)
             break;
-          digitalWrite(stageMove, HIGH);
-          delay(500);
-          digitalWrite(stageMove, LOW);
-          delay(500);
+          digitalWrite(stage1Move, HIGH);
+          delay(10);
+          digitalWrite(stage1Move, LOW);
+          delay(10);
         }
         break;
       case 'N':
@@ -182,14 +202,88 @@ void showNewData(char* instruction) {
         Serial.print("Moving Negative: ");
         Serial.print(steps);
 
-        digitalWrite(stageDir, LOW);
+        digitalWrite(stage1Dir, LOW);
         for (int i = 0; i < steps; i++) {
           if (interrupted)
             break;
-          digitalWrite(stageMove, HIGH);
-          delay(500);
-          digitalWrite(stageMove, LOW);
-          delay(500);
+          digitalWrite(stage1Move, HIGH);
+          delay(10);
+          digitalWrite(stage1Move, LOW);
+          delay(10);
+        }
+        break;
+      default:
+        Serial.println("Nothing goes here!");
+    }
+  }
+
+  if (strcmp(prefix, "S2") == 0) {
+    switch (dir) {
+      case 'P':
+        steps = getStep(instruction);
+        Serial.print("Moving Positive: ");
+        Serial.print(steps);
+
+        digitalWrite(stage2Dir, HIGH);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stage2Move, HIGH);
+          delay(10);
+          digitalWrite(stage2Move, LOW);
+          delay(10);
+        }
+        break;
+      case 'N':
+        steps = getStep(instruction);
+        Serial.print("Moving Negative: ");
+        Serial.print(steps);
+
+        digitalWrite(stage2Dir, LOW);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stage2Move, HIGH);
+          delay(10);
+          digitalWrite(stage2Move, LOW);
+          delay(10);
+        }
+        break;
+      default:
+        Serial.println("Nothing goes here!");
+    }
+  }
+
+  if (strcmp(prefix, "S3") == 0) {
+    switch (dir) {
+      case 'P':
+        steps = getStep(instruction);
+        Serial.print("Moving Positive: ");
+        Serial.print(steps);
+
+        digitalWrite(stage3Dir, HIGH);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stage3Move, HIGH);
+          delay(10);
+          digitalWrite(stage3Move, LOW);
+          delay(10);
+        }
+        break;
+      case 'N':
+        steps = getStep(instruction);
+        Serial.print("Moving Negative: ");
+        Serial.print(steps);
+
+        digitalWrite(stage3Dir, LOW);
+        for (int i = 0; i < steps; i++) {
+          if (interrupted)
+            break;
+          digitalWrite(stage3Move, HIGH);
+          delay(10);
+          digitalWrite(stage3Move, LOW);
+          delay(10);
         }
         break;
       default:
